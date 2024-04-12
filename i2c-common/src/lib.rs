@@ -1,4 +1,7 @@
-//TODO: split as an i2c common crate
+//! I2c common module
+//!
+//! Include:
+//! timing: I2C timing config
 
 /// i2c operation mode
 pub enum I2cMode {       
@@ -28,4 +31,4 @@ pub enum I2cSpeedMode {
       UltraFastMode,
 }
 
-pub mod timing;
+pub use {timing};

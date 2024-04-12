@@ -4,17 +4,16 @@
 #![no_std]
 
 pub(crate) mod registers;
-pub(crate) mod osl;
-pub mod common;
 
-use common::*;
+use i2c_common::{timing};
+
 pub(crate) use osl::error::{Result, Error, Errno};
 use registers::DwApbI2cRegisters;
 
 pub struct I2cDesignwareDriverConfig {
     mode: I2cMode,
     irq: u32,
-    timing: common::timing::I2cTiming,
+    timing: timing::I2cTiming,
 }
 
 /// The I2cDesignware Driver

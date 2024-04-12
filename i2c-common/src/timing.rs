@@ -1,34 +1,6 @@
-//TODO: split as an i2c common crate
+///! I2C Time configuration
 
 use core::mem::MaybeUninit;
-
-/// i2c operation mode
-pub enum I2cMode {       
-      /// Master Mode.      
-      ///
-      ///A master in an I2C system and programmed only as a Master
-      Master = 0,
-      /// Slave Mode
-      ///
-      ///A slave in an I2C system and programmed only as a Slave
-      Slave = 1,
-}
-
-/// i2c Speed mode
-pub enum I2cSpeedMode {
-      /// Standard Speed Mode.
-      StandMode = 0,
-      /// Fast Speed Mode.
-      FastMode,
-      /// Fast Plus Mode.
-      FastPlusMode,
-      /// TURBO Mode.
-      TurboMode,
-      /// High Speed.
-      HighSpeedMode,
-      /// ULTRA_FAST.
-      UltraFastMode,
-}
 
 /// I2C standard mode max bus frequency in hz
 pub const I2C_MAX_STANDARD_MODE_FREQ:u32 = 100000;
@@ -65,7 +37,7 @@ pub struct I2cTiming {
     analog_filter_cutoff_freq_hz: u32,
 }
 
-impl  I2cTiming {
+impl I2cTiming {
 
     /// Create a default timing configuration for a special SpeedMode 
     pub fn new(mode: I2cSpeedMode) -> I2cTiming {

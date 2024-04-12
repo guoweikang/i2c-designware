@@ -1,20 +1,11 @@
-[package]
-name = "i2c_designware"
-version = "0.1.0"
-edition = "2021"
-authors = ["Guoweikang <guoweikang.kernel@gmail.com>"]
-description = "Synopsys DesignWare I2C driver"
-license = "GPL-3.0-or-later OR Apache-2.0"
-homepage = ""
-repository = "https://github.com/guoweikang/i2c-designware.git"
+[workspace]
+resolver = "2"
 
-[dependencies]
-log = "0.4"
-tock-registers = "0.8"
-
-[features]
-#these feature define OS, should remove from this crate when osl remove
-linux = []
-
-
+members = [
+    "i2c-common",
+    "dw-apb-i2c",
+]
+exclude = [
+    "linux/i2c-dw-plat",
+]
 
