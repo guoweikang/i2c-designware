@@ -8,9 +8,10 @@
 #![feature(const_nonnull_new)]
 
 pub(crate) mod registers;
+pub(crate) mod common;
 
 use core::ptr::NonNull;
-use i2c_common::{timing, I2cMode};
+use common::{timing, I2cMode};
 use registers::DwApbI2cRegisters;
 
 pub(crate) use osl::error::{Result, Error, Errno};  

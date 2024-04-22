@@ -3,7 +3,7 @@
 //! Include:
 //! timing: I2C timing config
 
-#![no_std]
+// TODO: MOVE THIS TO A SINGLE CRATE
 
 /// i2c operation mode
 pub enum I2cMode {       

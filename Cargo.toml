@@ -1,8 +1,16 @@
-[workspace]
-resolver = "2"
+[package]
+name = "dw_apb_i2c"
+version = "0.1.0"
+edition = "2021"
+authors = ["Guoweikang <guoweikang.kernel@gmail.com>"]
+description = "Synopsys DesignWare I2C driver"
+license = "GPL-3.0-or-later OR Apache-2.0"
+homepage = ""
+repository = "https://github.com/guoweikang/i2c-designware.git"
 
-members = [
-    "i2c-common",
-    "dw-apb-i2c",
-]
+[dependencies]
+log = "0.4"
+tock-registers = "0.8"
 
+[target.'cfg(target_os = "arceos")'.dependencies]
+#Linux no need depend osl on cargo, it would be through `extern osl` import  
