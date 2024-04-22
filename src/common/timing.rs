@@ -1,7 +1,7 @@
 ///! I2C Time configuration
 
 use core::mem::MaybeUninit;
-use crate::I2cSpeedMode;
+use crate::common::I2cSpeedMode;
 
 /// I2C standard mode max bus frequency in hz
 pub const I2C_MAX_STANDARD_MODE_FREQ:u32 = 100000;
