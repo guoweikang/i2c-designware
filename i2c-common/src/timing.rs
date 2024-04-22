@@ -1,6 +1,7 @@
 ///! I2C Time configuration
 
 use core::mem::MaybeUninit;
+use crate::I2cSpeedMode;
 
 /// I2C standard mode max bus frequency in hz
 pub const I2C_MAX_STANDARD_MODE_FREQ:u32 = 100000;
@@ -54,53 +55,62 @@ impl I2cTiming {
         }
     }
 
+    /// get bus freq HZ
     #[inline]
     pub fn get_bus_freq_hz(&self) -> u32 {
         self.bus_freq_hz
     }
 
+    /// set bus_freq_hz and return self
     #[inline]
     pub fn bus_freq_hz(mut self, val: u32) -> Self {
         self.bus_freq_hz = val;
         self
     }
 
+    /// set scl_rise_ns and return self
     #[inline]
     pub fn scl_rise_ns(mut self, val: u32) -> Self {
         self.scl_rise_ns = val;
         self
     }
 
+    /// set scl_fall_ns and return self
     #[inline]
     pub fn scl_fall_ns(mut self, val: u32) -> Self {
-        self.scl_rise_ns = val;
+        self.scl_fall_ns = val;
         self
     }
 
+    /// set scl_int_delay and return self
     #[inline]
     pub fn scl_int_delay_ns(mut self, val: u32) -> Self {
         self.scl_int_delay_ns = val;
         self
     }
 
+    /// set sda_fall_ns and return self
     #[inline]
-    pub fn sda_fail_ns(mut self, val: u32) -> Self {
+    pub fn sda_fall_ns(mut self, val: u32) -> Self {
         self.sda_fall_ns = val;
         self
     }
 
+    /// set sda_hold_ns and return self
     #[inline]
     pub fn sda_hold_ns(mut self, val: u32) -> Self {
         self.sda_hold_ns = val;
         self
     }
 
+    /// set digital_filter_width_ns and return self
     #[inline]
     pub fn digital_filter_width_ns(mut self, val: u32) -> Self {
         self.digital_filter_width_ns = val;
         self
     }
 
+    /// set analog_filter_cutoff_freq_hz and return self
     #[inline]
     pub fn analog_filter_cutoff_freq_hz(mut self, val: u32) -> Self {
         self.analog_filter_cutoff_freq_hz = val;

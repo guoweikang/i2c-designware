@@ -3,6 +3,8 @@
 //! Include:
 //! timing: I2C timing config
 
+#![no_std]
+
 /// i2c operation mode
 pub enum I2cMode {       
       /// Master Mode.      
@@ -31,4 +33,5 @@ pub enum I2cSpeedMode {
       UltraFastMode,
 }
 
-pub use {timing};
+/// i2c timing
+pub mod timing;

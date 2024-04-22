@@ -5,7 +5,4 @@ members = [
     "i2c-common",
     "dw-apb-i2c",
 ]
-exclude = [
-    "linux/i2c-dw-plat",
-]
 
