@@ -1,23 +1,22 @@
-///! I2C Time configuration
-
-use core::mem::MaybeUninit;
 use crate::common::I2cSpeedMode;
+///! I2C Time configuration
+use core::mem::MaybeUninit;
 
 /// I2C standard mode max bus frequency in hz
-pub const I2C_MAX_STANDARD_MODE_FREQ:u32 = 100000;
+pub const I2C_MAX_STANDARD_MODE_FREQ: u32 = 100000;
 /// I2C fast mode max bus frequency in hz
-pub const I2C_MAX_FAST_MODE_FREQ:u32 = 400000;
+pub const I2C_MAX_FAST_MODE_FREQ: u32 = 400000;
 /// I2C fast plus mode max bus frequency in hz
-pub const I2C_MAX_FAST_MODE_PLUS_FREQ:u32 = 1000000;
+pub const I2C_MAX_FAST_MODE_PLUS_FREQ: u32 = 1000000;
 /// I2C turbo mode max bus frequency in hz
-pub const I2C_MAX_TURBO_MODE_FREQ:u32 = 1400000;
+pub const I2C_MAX_TURBO_MODE_FREQ: u32 = 1400000;
 /// I2C high speed mode max bus frequency in hz
-pub const I2C_MAX_HIGH_SPEED_MODE_FREQ:u32 = 3400000;
+pub const I2C_MAX_HIGH_SPEED_MODE_FREQ: u32 = 3400000;
 /// I2C ultra fast mode max bus frequency in hz
-pub const I2C_MAX_ULTRA_FAST_MODE_FREQ:u32 = 5000000;
+pub const I2C_MAX_ULTRA_FAST_MODE_FREQ: u32 = 5000000;
 
 /// I2C timing config for all i2c driver
-/// 
+///
 /// An instance of `I2cTiming` include can be used for any i2c driver to describe
 /// the bus frequency in Hz
 /// time SCL signal takes to rise in ns; t(r) in the I2C specification
@@ -27,6 +26,7 @@ pub const I2C_MAX_ULTRA_FAST_MODE_FREQ:u32 = 5000000;
 /// time IP core additionally needs to hold SDA in ns
 /// width in ns of spikes on i2c lines that the IP core digital filter can filter out
 /// threshold frequency for the low pass IP core analog filter
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct I2cTiming {
     bus_freq_hz: u32,
     scl_rise_ns: u32,
@@ -39,22 +39,39 @@ pub struct I2cTiming {
 }
 
 impl I2cTiming {
-
-    /// Create a default timing configuration for a special SpeedMode 
+    /// Create a default timing configuration for a special SpeedMode
     pub fn new(mode: I2cSpeedMode, use_default: bool) -> I2cTiming {
         // SAFETY: The variables will be fully initialized later.
-        let t: I2cTiming = unsafe { MaybeUninit::zeroed().assume_init() };    
-        
+        let t: I2cTiming = unsafe { MaybeUninit::zeroed().assume_init() };
+
         if use_default {
             match mode {
-                I2cSpeedMode::StandMode => t.bus_freq_hz(I2C_MAX_STANDARD_MODE_FREQ).scl_rise_ns(1000).scl_fall_ns(300),
-                I2cSpeedMode::FastMode => t.bus_freq_hz(I2C_MAX_FAST_MODE_FREQ).scl_rise_ns(300).scl_fall_ns(300),
-                I2cSpeedMode::FastPlusMode => t.bus_freq_hz(I2C_MAX_FAST_MODE_PLUS_FREQ).scl_rise_ns(120).scl_fall_ns(120),
-                I2cSpeedMode::TurboMode => t.bus_freq_hz(I2C_MAX_TURBO_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
-                I2cSpeedMode::HighSpeedMode => t.bus_freq_hz(I2C_MAX_HIGH_SPEED_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
-                I2cSpeedMode::UltraFastMode => t.bus_freq_hz(I2C_MAX_ULTRA_FAST_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
+                I2cSpeedMode::StandMode => t
+                    .bus_freq_hz(I2C_MAX_STANDARD_MODE_FREQ)
+                    .scl_rise_ns(1000)
+                    .scl_fall_ns(300),
+                I2cSpeedMode::FastMode => t
+                    .bus_freq_hz(I2C_MAX_FAST_MODE_FREQ)
+                    .scl_rise_ns(300)
+                    .scl_fall_ns(300),
+                I2cSpeedMode::FastPlusMode => t
+                    .bus_freq_hz(I2C_MAX_FAST_MODE_PLUS_FREQ)
+                    .scl_rise_ns(120)
+                    .scl_fall_ns(120),
+                I2cSpeedMode::TurboMode => t
+                    .bus_freq_hz(I2C_MAX_TURBO_MODE_FREQ)
+                    .scl_rise_ns(120)
+                    .scl_fall_ns(120),
+                I2cSpeedMode::HighSpeedMode => t
+                    .bus_freq_hz(I2C_MAX_HIGH_SPEED_MODE_FREQ)
+                    .scl_rise_ns(120)
+                    .scl_fall_ns(120),
+                I2cSpeedMode::UltraFastMode => t
+                    .bus_freq_hz(I2C_MAX_ULTRA_FAST_MODE_FREQ)
+                    .scl_rise_ns(120)
+                    .scl_fall_ns(120),
             }
-        }else {
+        } else {
             t
         }
     }
@@ -121,8 +138,3 @@ impl I2cTiming {
         self
     }
 }
-
-
-
-
-
