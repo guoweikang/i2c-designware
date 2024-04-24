@@ -9,8 +9,9 @@
 pub(crate) mod registers;
 pub(crate) mod common;
 
-pub use common::{timing::I2cTiming, I2cMode, I2cSpeedMode};
+pub use crate::common::{timing::I2cTiming, I2cMode, I2cSpeedMode};
 
+use crate::common::timing;
 use core::ptr::NonNull;
 use registers::DwApbI2cRegisters;
 
@@ -61,7 +62,7 @@ impl I2cDesignwareDriver {
 
     fn speed_check(&self) -> Result<()> {
         if !I2C_DESIGNWARE_SUPPORT_SPEED.contains(&self.config.timing.get_bus_freq_hz()) {
-            to_error(Errno::InvalidArgs)
+            return to_error(Errno::InvalidArgs);
         }
         
         Ok(())
