@@ -5,18 +5,23 @@
 #![feature(const_option)]
 #![feature(const_nonnull_new)]
 
+#[macro_use]
+extern crate derive_builder;
+
 pub(crate) mod common;
 pub(crate) mod registers;
 
-pub use crate::common::{timing::I2cTiming, I2cMode, I2cSpeedMode};
+pub use crate::common::{
+    timing, timing::I2cTiming, timing::I2cTimingBuilder, I2cMode, I2cSpeedMode,
+};
 
-use crate::common::timing;
 use core::ptr::NonNull;
 use registers::DwApbI2cRegisters;
 
 pub(crate) use osl::error::{to_error, Errno, Result};
 
 /// I2cDesignwareDriverConfig
+#[allow(dead_code)]
 pub struct I2cDesignwareDriverConfig {
     mode: I2cMode,
     irq: i32,
@@ -24,12 +29,14 @@ pub struct I2cDesignwareDriverConfig {
 }
 
 impl I2cDesignwareDriverConfig {
+    /// Create  a Config
     pub fn new(mode: I2cMode, irq: i32, timing: I2cTiming) -> Self {
         Self { mode, irq, timing }
     }
 }
 
 /// The I2cDesignware Driver
+#[allow(dead_code)]
 pub struct I2cDesignwareDriver {
     regs: NonNull<DwApbI2cRegisters>,
     config: I2cDesignwareDriverConfig,

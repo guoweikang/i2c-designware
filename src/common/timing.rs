@@ -1,6 +1,6 @@
-use crate::common::I2cSpeedMode;
-///! I2C Time configuration
-use core::mem::MaybeUninit;
+//! I2C Time configuration
+
+use super::I2cSpeedMode;
 
 /// I2C standard mode max bus frequency in hz
 pub const I2C_MAX_STANDARD_MODE_FREQ: u32 = 100000;
@@ -26,7 +26,11 @@ pub const I2C_MAX_ULTRA_FAST_MODE_FREQ: u32 = 5000000;
 /// time IP core additionally needs to hold SDA in ns
 /// width in ns of spikes on i2c lines that the IP core digital filter can filter out
 /// threshold frequency for the low pass IP core analog filter
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[allow(missing_docs)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, Builder)]
+#[builder(no_std)]
+#[builder(build_fn(error(validation_error = false)))]
+#[builder(public)]
 pub struct I2cTiming {
     bus_freq_hz: u32,
     scl_rise_ns: u32,
@@ -40,101 +44,44 @@ pub struct I2cTiming {
 
 impl I2cTiming {
     /// Create a default timing configuration for a special SpeedMode
-    pub fn new(mode: I2cSpeedMode, use_default: bool) -> I2cTiming {
+    pub fn new_builder(mode: I2cSpeedMode, use_default: bool) -> I2cTimingBuilder {
         // SAFETY: The variables will be fully initialized later.
-        let t: I2cTiming = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut builder = I2cTimingBuilder::default();
 
         if use_default {
             match mode {
-                I2cSpeedMode::StandMode => t
+                I2cSpeedMode::StandMode => builder
                     .bus_freq_hz(I2C_MAX_STANDARD_MODE_FREQ)
                     .scl_rise_ns(1000)
                     .scl_fall_ns(300),
-                I2cSpeedMode::FastMode => t
+                I2cSpeedMode::FastMode => builder
                     .bus_freq_hz(I2C_MAX_FAST_MODE_FREQ)
                     .scl_rise_ns(300)
                     .scl_fall_ns(300),
-                I2cSpeedMode::FastPlusMode => t
+                I2cSpeedMode::FastPlusMode => builder
                     .bus_freq_hz(I2C_MAX_FAST_MODE_PLUS_FREQ)
                     .scl_rise_ns(120)
                     .scl_fall_ns(120),
-                I2cSpeedMode::TurboMode => t
+                I2cSpeedMode::TurboMode => builder
                     .bus_freq_hz(I2C_MAX_TURBO_MODE_FREQ)
                     .scl_rise_ns(120)
                     .scl_fall_ns(120),
-                I2cSpeedMode::HighSpeedMode => t
+                I2cSpeedMode::HighSpeedMode => builder
                     .bus_freq_hz(I2C_MAX_HIGH_SPEED_MODE_FREQ)
                     .scl_rise_ns(120)
                     .scl_fall_ns(120),
-                I2cSpeedMode::UltraFastMode => t
+                I2cSpeedMode::UltraFastMode => builder
                     .bus_freq_hz(I2C_MAX_ULTRA_FAST_MODE_FREQ)
                     .scl_rise_ns(120)
                     .scl_fall_ns(120),
-            }
-        } else {
-            t
+            };
         }
+        builder
     }
 
     /// get bus freq HZ
     #[inline]
     pub fn get_bus_freq_hz(&self) -> u32 {
         self.bus_freq_hz
-    }
-
-    /// set bus_freq_hz and return self
-    #[inline]
-    pub fn bus_freq_hz(mut self, val: u32) -> Self {
-        self.bus_freq_hz = val;
-        self
-    }
-
-    /// set scl_rise_ns and return self
-    #[inline]
-    pub fn scl_rise_ns(mut self, val: u32) -> Self {
-        self.scl_rise_ns = val;
-        self
-    }
-
-    /// set scl_fall_ns and return self
-    #[inline]
-    pub fn scl_fall_ns(mut self, val: u32) -> Self {
-        self.scl_fall_ns = val;
-        self
-    }
-
-    /// set scl_int_delay and return self
-    #[inline]
-    pub fn scl_int_delay_ns(mut self, val: u32) -> Self {
-        self.scl_int_delay_ns = val;
-        self
-    }
-
-    /// set sda_fall_ns and return self
-    #[inline]
-    pub fn sda_fall_ns(mut self, val: u32) -> Self {
-        self.sda_fall_ns = val;
-        self
-    }
-
-    /// set sda_hold_ns and return self
-    #[inline]
-    pub fn sda_hold_ns(mut self, val: u32) -> Self {
-        self.sda_hold_ns = val;
-        self
-    }
-
-    /// set digital_filter_width_ns and return self
-    #[inline]
-    pub fn digital_filter_width_ns(mut self, val: u32) -> Self {
-        self.digital_filter_width_ns = val;
-        self
-    }
-
-    /// set analog_filter_cutoff_freq_hz and return self
-    #[inline]
-    pub fn analog_filter_cutoff_freq_hz(mut self, val: u32) -> Self {
-        self.analog_filter_cutoff_freq_hz = val;
-        self
     }
 }
