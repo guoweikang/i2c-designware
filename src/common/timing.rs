@@ -41,17 +41,21 @@ pub struct I2cTiming {
 impl I2cTiming {
 
     /// Create a default timing configuration for a special SpeedMode 
-    pub fn new(mode: I2cSpeedMode) -> I2cTiming {
+    pub fn new(mode: I2cSpeedMode, use_default: bool) -> I2cTiming {
         // SAFETY: The variables will be fully initialized later.
         let t: I2cTiming = unsafe { MaybeUninit::zeroed().assume_init() };    
         
-        match mode {
-            I2cSpeedMode::StandMode => t.bus_freq_hz(I2C_MAX_STANDARD_MODE_FREQ).scl_rise_ns(1000).scl_fall_ns(300),
-            I2cSpeedMode::FastMode => t.bus_freq_hz(I2C_MAX_FAST_MODE_FREQ).scl_rise_ns(300).scl_fall_ns(300),
-            I2cSpeedMode::FastPlusMode => t.bus_freq_hz(I2C_MAX_FAST_MODE_PLUS_FREQ).scl_rise_ns(120).scl_fall_ns(120),
-            I2cSpeedMode::TurboMode => t.bus_freq_hz(I2C_MAX_TURBO_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
-            I2cSpeedMode::HighSpeedMode => t.bus_freq_hz(I2C_MAX_HIGH_SPEED_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
-            I2cSpeedMode::UltraFastMode => t.bus_freq_hz(I2C_MAX_ULTRA_FAST_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
+        if use_default {
+            match mode {
+                I2cSpeedMode::StandMode => t.bus_freq_hz(I2C_MAX_STANDARD_MODE_FREQ).scl_rise_ns(1000).scl_fall_ns(300),
+                I2cSpeedMode::FastMode => t.bus_freq_hz(I2C_MAX_FAST_MODE_FREQ).scl_rise_ns(300).scl_fall_ns(300),
+                I2cSpeedMode::FastPlusMode => t.bus_freq_hz(I2C_MAX_FAST_MODE_PLUS_FREQ).scl_rise_ns(120).scl_fall_ns(120),
+                I2cSpeedMode::TurboMode => t.bus_freq_hz(I2C_MAX_TURBO_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
+                I2cSpeedMode::HighSpeedMode => t.bus_freq_hz(I2C_MAX_HIGH_SPEED_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
+                I2cSpeedMode::UltraFastMode => t.bus_freq_hz(I2C_MAX_ULTRA_FAST_MODE_FREQ).scl_rise_ns(120).scl_fall_ns(120),
+            }
+        }else {
+            t
         }
     }
 

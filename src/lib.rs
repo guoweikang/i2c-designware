@@ -1,7 +1,6 @@
 //! Driver for the  Synopsys DesignWare I2C
 //!
 
-
 #![no_std]
 
 #![feature(const_option)]
@@ -10,22 +9,27 @@
 pub(crate) mod registers;
 pub(crate) mod common;
 
+pub use common::{timing::I2cTiming, I2cMode, I2cSpeedMode};
+
 use core::ptr::NonNull;
-use common::{timing, I2cMode};
 use registers::DwApbI2cRegisters;
 
-pub(crate) use osl::error::{Result, Error, Errno};  
+pub(crate) use osl::error::{Result, to_error, Errno};  
 
 
 /// I2cDesignwareDriverConfig
-#[allow(dead_code)] // remove me
 pub struct I2cDesignwareDriverConfig {
     mode: I2cMode,
-    irq: u32,
-    timing: timing::I2cTiming,
+    irq: i32,
+    timing: I2cTiming,
 }
 
-#[allow(dead_code)] // remove me
+impl I2cDesignwareDriverConfig {
+    pub fn new(mode: I2cMode, irq: i32, timing: I2cTiming) -> Self { 
+        Self {mode, irq, timing}
+    }
+}
+
 /// The I2cDesignware Driver
 pub struct I2cDesignwareDriver {
     regs: NonNull<DwApbI2cRegisters>,
@@ -57,7 +61,7 @@ impl I2cDesignwareDriver {
 
     fn speed_check(&self) -> Result<()> {
         if !I2C_DESIGNWARE_SUPPORT_SPEED.contains(&self.config.timing.get_bus_freq_hz()) {
-            return Err(Error::from(Errno::InvalidArgs));
+            to_error(Errno::InvalidArgs)
         }
         
         Ok(())
