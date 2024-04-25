@@ -32,13 +32,21 @@ pub const I2C_MAX_ULTRA_FAST_MODE_FREQ: u32 = 5000000;
 #[builder(build_fn(error(validation_error = false)))]
 #[builder(public)]
 pub struct I2cTiming {
+    #[builder(default = "0")]
     bus_freq_hz: u32,
+    #[builder(default = "0")]
     scl_rise_ns: u32,
+    #[builder(default = "0")]
     scl_fall_ns: u32,
+    #[builder(default = "0")]
     scl_int_delay_ns: u32,
+    #[builder(default = "0")]
     sda_fall_ns: u32,
+    #[builder(default = "0")]
     sda_hold_ns: u32,
+    #[builder(default = "0")]
     digital_filter_width_ns: u32,
+    #[builder(default = "0")]
     analog_filter_cutoff_freq_hz: u32,
 }
 
