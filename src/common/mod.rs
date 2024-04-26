@@ -1,9 +1,9 @@
 //! I2c common module
 //!
+//! Compatible with different hardware platforms, it should be independent in the future
+//! TODO: MOVE THIS TO A SINGLE CRATE
 //! Include:
 //! timing: I2C timing config
-
-// TODO: MOVE THIS TO A SINGLE CRATE
 
 /// i2c operation mode
 pub enum I2cMode {

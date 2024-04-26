@@ -8,6 +8,9 @@
 #[macro_use]
 extern crate derive_builder;
 
+#[macro_use]
+extern crate osl;
+
 pub(crate) mod common;
 pub(crate) mod registers;
 
@@ -15,60 +18,19 @@ pub use crate::common::{
     timing, timing::I2cTiming, timing::I2cTimingBuilder, I2cMode, I2cSpeedMode,
 };
 
-use core::ptr::NonNull;
-use registers::DwApbI2cRegisters;
+mod master;
+pub use crate::master::I2cDwMasterDriver;
 
-pub(crate) use osl::error::{to_error, Errno, Result};
-
-/// I2cDesignwareDriverConfig
+/// I2cDwDriverConfig
 #[allow(dead_code)]
-pub struct I2cDesignwareDriverConfig {
-    mode: I2cMode,
+pub struct I2cDwDriverConfig {
     irq: i32,
     timing: I2cTiming,
 }
 
-impl I2cDesignwareDriverConfig {
+impl I2cDwDriverConfig {
     /// Create  a Config
-    pub fn new(mode: I2cMode, irq: i32, timing: I2cTiming) -> Self {
-        Self { mode, irq, timing }
-    }
-}
-
-/// The I2cDesignware Driver
-#[allow(dead_code)]
-pub struct I2cDesignwareDriver {
-    regs: NonNull<DwApbI2cRegisters>,
-    config: I2cDesignwareDriverConfig,
-}
-
-const I2C_DESIGNWARE_SUPPORT_SPEED: [u32; 4] = [
-    timing::I2C_MAX_STANDARD_MODE_FREQ,
-    timing::I2C_MAX_FAST_MODE_FREQ,
-    timing::I2C_MAX_FAST_MODE_PLUS_FREQ,
-    timing::I2C_MAX_HIGH_SPEED_MODE_FREQ,
-];
-
-impl I2cDesignwareDriver {
-    /// Create a new I2cDesignwareDriver
-    pub const fn new(config: I2cDesignwareDriverConfig, base_addr: *mut u8) -> I2cDesignwareDriver {
-        I2cDesignwareDriver {
-            config,
-            regs: NonNull::new(base_addr).expect("ptr is null").cast(),
-        }
-    }
-
-    /// init I2cDesignwareDriver,call only once
-    pub fn setup(&mut self) -> Result<()> {
-        self.speed_check()?;
-        Ok(())
-    }
-
-    fn speed_check(&self) -> Result<()> {
-        if !I2C_DESIGNWARE_SUPPORT_SPEED.contains(&self.config.timing.get_bus_freq_hz()) {
-            return to_error(Errno::InvalidArgs);
-        }
-
-        Ok(())
+    pub fn new(irq: i32, timing: I2cTiming) -> Self {
+        Self { irq, timing }
     }
 }
