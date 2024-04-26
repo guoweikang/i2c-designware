@@ -10,6 +10,7 @@ repository = "https://github.com/guoweikang/i2c-designware.git"
 
 [dependencies]
 tock-registers = "0.8"
+bitflags = "2.5.0"
 derive_builder = {version ="0.20", default-features = false}
 [target.'cfg(target_os = "arceos")'.dependencies]
 #Linux no need depend osl on cargo, it would be through `extern osl` import  

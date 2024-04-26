@@ -4,6 +4,7 @@
 #![no_std]
 #![feature(const_option)]
 #![feature(const_nonnull_new)]
+#![feature(const_trait_impl)]
 
 #[macro_use]
 extern crate derive_builder;
@@ -11,12 +12,14 @@ extern crate derive_builder;
 #[macro_use]
 extern crate osl;
 
-pub(crate) mod common;
+pub mod common;
 pub(crate) mod registers;
+pub(crate) mod core;
 
 pub use crate::common::{
     timing, timing::I2cTiming, timing::I2cTimingBuilder, I2cMode, I2cSpeedMode,
 };
+pub use crate::common::functionality::*;
 
 mod master;
 pub use crate::master::I2cDwMasterDriver;

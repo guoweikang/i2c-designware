@@ -35,3 +35,5 @@ pub enum I2cSpeedMode {
 
 /// i2c timing
 pub mod timing;
+/// i2c func
+pub mod functionality;

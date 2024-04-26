@@ -1,7 +1,39 @@
 //! The official documentation: <https://www.synopsys.com/dw/ipdir.php?c=DW_apb_i2c>
 
+use core::ptr::NonNull;
+use core::ops::Deref;
+
 use tock_registers::register_bitfields;
 use tock_registers::registers::{ReadOnly, ReadWrite, WriteOnly};
+
+/// DwApbI2cRegisters pointer wrapper
+pub(crate) struct DwApbI2cRegistersRef {
+    ptr: NonNull<DwApbI2cRegisters>,
+}
+
+impl DwApbI2cRegistersRef {
+    /// Create a new `StaticRef` from a raw pointer
+    ///
+    /// ## Safety
+    ///
+    /// - `ptr` must be aligned, non-null, and dereferencable as `T`.
+    /// - `*ptr` must be valid for the program duration.
+    pub(crate) const fn new(ptr: *mut u8) -> DwApbI2cRegistersRef {
+        DwApbI2cRegistersRef {
+            ptr: NonNull::new(ptr).expect("ptr os null").cast(),
+        }
+    }
+}
+
+impl Deref for DwApbI2cRegistersRef {
+    type Target = DwApbI2cRegisters;
+
+    fn deref(&self) -> &DwApbI2cRegisters {
+        // SAFETY: `ptr` is aligned and dereferencable for the program
+        // duration as promised by the caller of `StaticRef::new`.
+        unsafe { self.ptr.as_ref() }
+    }
+}
 
 #[repr(C)]
 #[allow(non_snake_case)]
@@ -292,3 +324,8 @@ register_bitfields![u32,
         ARP_UDID OFFSET(0) NUMBITS(32) [],
      ],
 ];
+
+/// Designware Component Type number = 0x44_57_01_40. This 
+/// assigned unique hex value is constant and is derived from the two
+/// ASCII letters “DW” followed by a 16-bit unsigned number.
+pub(crate) const DW_IC_COMP_TYPE_VALUE:u32 = 0x44570140;

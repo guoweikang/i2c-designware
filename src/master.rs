@@ -1,15 +1,21 @@
-use core::ptr::NonNull;
 use osl::error::{to_error, Errno, Result};
 
+use tock_registers::interfaces::Readable;
+
 use crate::timing;
-use crate::registers::DwApbI2cRegisters;
+use crate::registers::{DwApbI2cRegistersRef,DW_IC_COMP_TYPE_VALUE};
 use crate::I2cDwDriverConfig;
+use crate::common::functionality::I2cFuncFlags;
+use crate::core::*;
 
 /// The I2cDesignware Driver
 #[allow(dead_code)]
 pub struct I2cDwMasterDriver {
-    regs: NonNull<DwApbI2cRegisters>,
-    config: I2cDwDriverConfig,
+    regs: DwApbI2cRegistersRef,
+    /// Config From external
+    ext_config: I2cDwDriverConfig,
+    functionality:Option<I2cFuncFlags>,
+    cfg: Option<DwI2cConfigFlags>,
 }
 
 const I2C_DESIGNWARE_SUPPORT_SPEED: [u32; 4] = [
@@ -23,19 +29,55 @@ impl I2cDwMasterDriver {
     /// Create a new I2cDesignwarDriver
     pub const fn new(config: I2cDwDriverConfig, base_addr: *mut u8) -> I2cDwMasterDriver {
         I2cDwMasterDriver {
-            config,
-            regs: NonNull::new(base_addr).expect("ptr is null").cast(),
+            ext_config: config,
+            regs: DwApbI2cRegistersRef::new(base_addr),
+            functionality: None,
+            cfg: None,
         }
     }
 
-    /// init I2cDesignwareDriver,call only once
-    pub fn setup(&mut self) -> Result<()> {
+    /// init I2cDwMasterDriver config ,call only once
+    pub fn config_init(&mut self) -> Result<()> {
         self.speed_check()?;
+
+        // init functionality
+        self.functionality = Some(I2cFuncFlags::TEN_BIT_ADDR | DW_I2C_DEFAULT_FUNCTIONALITY);
+        // init master cfg flags
+        let mut master_cfg = DwI2cConfigFlags::MASTER | DwI2cConfigFlags::SLAVE_DISABLE | 
+            DwI2cConfigFlags::RESTART_EN;
+        
+        master_cfg |= match self.ext_config.timing.get_bus_freq_hz() {
+            timing::I2C_MAX_STANDARD_MODE_FREQ => DwI2cConfigFlags::SPEED_STD,
+            timing::I2C_MAX_HIGH_SPEED_MODE_FREQ => DwI2cConfigFlags::SPEED_HIGH,
+            _ => DwI2cConfigFlags::SPEED_FAST,
+        };
+        self.cfg = Some(master_cfg);
+        Ok(())
+    }
+
+    /// Initialize the designware I2C master hardware
+    pub fn setup(&mut self) -> Result<()> {
+    }
+
+    fn com_type_check(&mut self) -> Result<()> {
+        let com_type = self.regs.IC_COMP_TYPE.get();
+        if com_type == DW_IC_COMP_TYPE_VALUE {
+            log_info!("com_type check Ok");
+        } else if com_type == DW_IC_COMP_TYPE_VALUE & 0x0000ffff { 
+            log_error!("com_type check Failed, not support 16 bit system ");
+            return to_error(Errno::NoSuchDevice);
+        } else if com_type == DW_IC_COMP_TYPE_VALUE.to_be() {
+            log_error!("com_type check Failed, not support BE system ");
+            return to_error(Errno::NoSuchDevice);
+        } else {
+            log_error!("com_type check failed, Unknown Synopsys component type: {:x}", com_type);
+            return to_error(Errno::NoSuchDevice);
+        }
         Ok(())
     }
 
     fn speed_check(&self) -> Result<()> {
-        let bus_freq_hz = self.config.timing.get_bus_freq_hz();
+        let bus_freq_hz = self.ext_config.timing.get_bus_freq_hz();
         if !I2C_DESIGNWARE_SUPPORT_SPEED.contains(&bus_freq_hz) {
             log_error!("{bus_freq_hz} Hz is unsupported, only 100kHz, 400kHz, 1MHz and 3.4MHz are supported");
             return to_error(Errno::InvalidArgs);
