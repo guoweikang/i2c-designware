@@ -7,23 +7,15 @@
 #![feature(const_trait_impl)]
 
 #[macro_use]
-extern crate derive_builder;
-
-#[macro_use]
 extern crate osl;
 
-pub mod common;
 pub(crate) mod registers;
 pub(crate) mod core;
 
-pub use crate::common::{
-    timing, timing::I2cTiming, timing::I2cTimingBuilder, I2cMode, I2cSpeedMode,
-};
-pub use crate::common::functionality::*;
-
-mod master;
 pub use crate::master::I2cDwMasterDriver;
 
+
+use i2c_common::I2cTiming;
 /// I2cDwDriverConfig
 #[allow(dead_code)]
 pub struct I2cDwDriverConfig {
@@ -37,3 +29,5 @@ impl I2cDwDriverConfig {
         Self { irq, timing }
     }
 }
+
+mod master;

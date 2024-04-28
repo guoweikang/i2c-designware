@@ -1,11 +1,9 @@
 use osl::error::{to_error, Errno, Result};
-
 use tock_registers::interfaces::Readable;
+use i2c_common::*;
 
-use crate::timing;
 use crate::registers::{DwApbI2cRegistersRef,DW_IC_COMP_TYPE_VALUE};
 use crate::I2cDwDriverConfig;
-use crate::common::functionality::I2cFuncFlags;
 use crate::core::*;
 
 /// The I2cDesignware Driver
@@ -19,10 +17,10 @@ pub struct I2cDwMasterDriver {
 }
 
 const I2C_DESIGNWARE_SUPPORT_SPEED: [u32; 4] = [
-    timing::I2C_MAX_STANDARD_MODE_FREQ,
-    timing::I2C_MAX_FAST_MODE_FREQ,
-    timing::I2C_MAX_FAST_MODE_PLUS_FREQ,
-    timing::I2C_MAX_HIGH_SPEED_MODE_FREQ,
+    I2C_MAX_STANDARD_MODE_FREQ,
+    I2C_MAX_FAST_MODE_FREQ,
+    I2C_MAX_FAST_MODE_PLUS_FREQ,
+    I2C_MAX_HIGH_SPEED_MODE_FREQ,
 ];
 
 impl I2cDwMasterDriver {
@@ -47,8 +45,8 @@ impl I2cDwMasterDriver {
             DwI2cConfigFlags::RESTART_EN;
         
         master_cfg |= match self.ext_config.timing.get_bus_freq_hz() {
-            timing::I2C_MAX_STANDARD_MODE_FREQ => DwI2cConfigFlags::SPEED_STD,
-            timing::I2C_MAX_HIGH_SPEED_MODE_FREQ => DwI2cConfigFlags::SPEED_HIGH,
+            I2C_MAX_STANDARD_MODE_FREQ => DwI2cConfigFlags::SPEED_STD,
+            I2C_MAX_HIGH_SPEED_MODE_FREQ => DwI2cConfigFlags::SPEED_HIGH,
             _ => DwI2cConfigFlags::SPEED_FAST,
         };
         self.cfg = Some(master_cfg);
@@ -57,8 +55,30 @@ impl I2cDwMasterDriver {
 
     /// Initialize the designware I2C master hardware
     pub fn setup(&mut self) -> Result<()> {
+        self.com_type_check()?;
+        //self.timing_setup()?;
+        Ok(())
     }
 
+    /*
+    fn timing_setup(&mut self) -> Result<()> {
+        let com_param = self.regs.IC_COMP_PARAM_1.get();
+        let mut scl_fall_ns = self.ext_config.timing.get_scl_fall_ns();
+        let mut sda_fall_ns = self.ext_config.timing.get_sda_fall_ns();
+    
+        // Set standard and fast speed dividers for high/low periods
+        if scl_fall_ns == 0 {
+            scl_fall_ns = 300;
+        }
+
+        if sda_fall_ns == 0 {
+            sda_fall_ns = 300;
+        }
+
+        Ok(())
+
+    }
+*/
     fn com_type_check(&mut self) -> Result<()> {
         let com_type = self.regs.IC_COMP_TYPE.get();
         if com_type == DW_IC_COMP_TYPE_VALUE {

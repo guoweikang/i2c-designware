@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use crate::common::functionality::*;
+use i2c_common::I2cFuncFlags;
 
 pub(crate) const DW_I2C_DEFAULT_FUNCTIONALITY: I2cFuncFlags = I2cFuncFlags::I2C.union(I2cFuncFlags::SMBUS_BYTE)
                                                    .union(I2cFuncFlags::SMBUS_BYTE_DATA) 
