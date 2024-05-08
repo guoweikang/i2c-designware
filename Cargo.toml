@@ -10,9 +10,9 @@ repository = "https://github.com/guoweikang/i2c-designware.git"
 
 [dependencies]
 tock-registers = "0.8"
-bitflags = "2.5.0"
 #i2c_common = { git = "https://github.com/guoweikang/i2c-common.git"}
 i2c_common = { path = "../i2c-common/"}
+bitflags = "2.5.0"
 
 [target.'cfg(target_os = "arceos")'.dependencies]
 #Linux no need depend osl on cargo, it would be through `extern osl` import  

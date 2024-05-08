@@ -1,71 +1,134 @@
-use osl::error::{to_error, Errno, Result};
-use tock_registers::interfaces::Readable;
+use osl::error::{Result};
+use tock_registers::interfaces::{Readable, Writeable};
 use i2c_common::*;
 
-use crate::registers::{DwApbI2cRegistersRef,DW_IC_COMP_TYPE_VALUE};
-use crate::I2cDwDriverConfig;
-use crate::core::*;
+use crate::{
+    I2cDwCoreDriver,
+    I2cDwDriverConfig,
+    core::*,
+    common::DwI2cSclLHCnt,
+    registers::*,
+};
 
 /// The I2cDesignware Driver
 #[allow(dead_code)]
 pub struct I2cDwMasterDriver {
-    regs: DwApbI2cRegistersRef,
-    /// Config From external
-    ext_config: I2cDwDriverConfig,
-    functionality:Option<I2cFuncFlags>,
-    cfg: Option<DwI2cConfigFlags>,
+    /// core Driver
+    driver: I2cDwCoreDriver,
+    /// I2c scl_LHCNT
+    lhcnt: DwI2cSclLHCnt,
+    /// Fifo
+    tx_fifo_depth: u32,
+    rx_fifo_depth: u32,
 }
 
-const I2C_DESIGNWARE_SUPPORT_SPEED: [u32; 4] = [
-    I2C_MAX_STANDARD_MODE_FREQ,
-    I2C_MAX_FAST_MODE_FREQ,
-    I2C_MAX_FAST_MODE_PLUS_FREQ,
-    I2C_MAX_HIGH_SPEED_MODE_FREQ,
-];
+unsafe impl Sync for I2cDwMasterDriver {}
+unsafe impl Send for I2cDwMasterDriver {}
 
 impl I2cDwMasterDriver {
     /// Create a new I2cDesignwarDriver
-    pub const fn new(config: I2cDwDriverConfig, base_addr: *mut u8) -> I2cDwMasterDriver {
-        I2cDwMasterDriver {
-            ext_config: config,
-            regs: DwApbI2cRegistersRef::new(base_addr),
-            functionality: None,
-            cfg: None,
+    pub fn new(config: I2cDwDriverConfig, base_addr: *mut u8) -> I2cDwMasterDriver {
+        Self {
+            driver: I2cDwCoreDriver::new(config, base_addr),
+            lhcnt: DwI2cSclLHCnt::default(),
+            tx_fifo_depth: 0,
+            rx_fifo_depth: 0,
         }
     }
 
-    /// init I2cDwMasterDriver config ,call only once
-    pub fn config_init(&mut self) -> Result<()> {
-        self.speed_check()?;
-
-        // init functionality
-        self.functionality = Some(I2cFuncFlags::TEN_BIT_ADDR | DW_I2C_DEFAULT_FUNCTIONALITY);
-        // init master cfg flags
-        let mut master_cfg = DwI2cConfigFlags::MASTER | DwI2cConfigFlags::SLAVE_DISABLE | 
-            DwI2cConfigFlags::RESTART_EN;
-        
-        master_cfg |= match self.ext_config.timing.get_bus_freq_hz() {
-            I2C_MAX_STANDARD_MODE_FREQ => DwI2cConfigFlags::SPEED_STD,
-            I2C_MAX_HIGH_SPEED_MODE_FREQ => DwI2cConfigFlags::SPEED_HIGH,
-            _ => DwI2cConfigFlags::SPEED_FAST,
-        };
-        self.cfg = Some(master_cfg);
-        Ok(())
-    }
-
-    /// Initialize the designware I2C master hardware
+    /// Initialize the designware I2C driver config
     pub fn setup(&mut self) -> Result<()> {
-        self.com_type_check()?;
-        //self.timing_setup()?;
+        // com and speed check must be the first step
+        self.driver.com_type_check()?;
+        self.driver.speed_check()?;
+
+        // init config 
+        self.config_init()?;
+        self.scl_lhcnt_init()?;
+        self.driver.sda_hold_time_init()?;
+        self.fifo_size_init();
+
+        // Initialize the designware I2C master hardware
+        self.master_setup()?;          
+
         Ok(())
     }
 
+    /// Prepare controller for a transaction and call xfer_msg
     /*
-    fn timing_setup(&mut self) -> Result<()> {
-        let com_param = self.regs.IC_COMP_PARAM_1.get();
-        let mut scl_fall_ns = self.ext_config.timing.get_scl_fall_ns();
-        let mut sda_fall_ns = self.ext_config.timing.get_sda_fall_ns();
-    
+    pub fn xfer(&mut self) {
+
+
+    }
+
+    fn xfer_init(&mut self) {
+        self.driver.disable_controler();
+    }
+*/
+    /// functionality and cfg init
+    fn config_init(&mut self) -> Result<()> {
+        // init functionality
+        let functionality = I2cFuncFlags::TEN_BIT_ADDR | DW_I2C_DEFAULT_FUNCTIONALITY;
+        self.driver.functionality_init(functionality);
+
+        // init master cfg
+        self.driver.cfg.modify(IC_CON::MASTER_MODE.val(1));
+        self.driver.cfg.modify(IC_CON::IC_SLAVE_DISABLE.val(1));
+        self.driver.cfg.modify(IC_CON::IC_RESTART_EN.val(1));
+        
+        // On AMD platforms BIOS advertises the bus clear feature
+        // and enables the SCL/SDA stuck low. SMU FW does the
+        // bus recovery process. Driver should not ignore this BIOS
+        // advertisement of bus clear feature.
+        if self.driver.regs.IC_CON.is_set(IC_CON::BUS_CLEAR_FEATURE_CTRL) {
+            self.driver.cfg.modify(IC_CON::BUS_CLEAR_FEATURE_CTRL.val(1));
+        }
+
+        self.driver.cfg_init();
+        Ok(())
+    }
+
+    fn master_setup(&mut self) -> Result<()> {
+        // Disable the adapter
+        self.driver.disable_controler();
+        // Write standard speed timing parameters
+        self.driver.regs.IC_SS_OR_UFM_SCL_LCNT.set(self.lhcnt.ss_lcnt.into());
+        self.driver.regs.IC_SS_OR_UFM_SCL_HCNT.set(self.lhcnt.ss_hcnt.into());
+
+        // Write fast mode/fast mode plus timing parameters
+        self.driver.regs.IC_FS_SCL_LCNT.set(self.lhcnt.fs_lcnt.into());
+        self.driver.regs.IC_FS_SCL_HCNT_OR_UFM_TBUF_CNT.set(self.lhcnt.fs_hcnt.into());
+
+        // Write high speed timing parameters if supported
+        if self.driver.speed_mode == I2cSpeedMode::HighSpeedMode {
+            self.driver.regs.IC_HS_SCL_LCNT.set(self.lhcnt.hs_lcnt.into());
+            self.driver.regs.IC_HS_SCL_HCNT.set(self.lhcnt.hs_hcnt.into());
+        }
+
+        // Write SDA hold time if supported
+        self.driver.write_sda_hold_time();
+        // Write fifo
+        self.driver.regs.IC_TX_TL.set(self.tx_fifo_depth / 2);
+        self.driver.regs.IC_RX_TL.set(0);
+        
+        // set IC_CON
+        self.driver.write_cfg();
+        Ok(())
+    }
+
+    fn fifo_size_init(&mut self) {
+        let com_param_1 = self.driver.regs.IC_COMP_PARAM_1.extract();
+        self.tx_fifo_depth = com_param_1.read(IC_COMP_PARAM_1::TX_BUFFER_DEPTH) + 1;
+        self.rx_fifo_depth = com_param_1.read(IC_COMP_PARAM_1::RX_BUFFER_DEPTH) + 1;
+        log_info!("I2C fifo_depth RX:TX = {}: {}",  self.rx_fifo_depth, self.tx_fifo_depth);
+    }
+
+    fn scl_lhcnt_init(&mut self) -> Result<()> {
+        let driver = &mut self.driver;
+        let ic_clk = driver.ext_config.clk_rate_khz;
+        let mut scl_fall_ns = driver.ext_config.timing.get_scl_fall_ns();
+        let mut sda_fall_ns = driver.ext_config.timing.get_sda_fall_ns();
+
         // Set standard and fast speed dividers for high/low periods
         if scl_fall_ns == 0 {
             scl_fall_ns = 300;
@@ -75,33 +138,32 @@ impl I2cDwMasterDriver {
             sda_fall_ns = 300;
         }
 
-        Ok(())
-
-    }
-*/
-    fn com_type_check(&mut self) -> Result<()> {
-        let com_type = self.regs.IC_COMP_TYPE.get();
-        if com_type == DW_IC_COMP_TYPE_VALUE {
-            log_info!("com_type check Ok");
-        } else if com_type == DW_IC_COMP_TYPE_VALUE & 0x0000ffff { 
-            log_error!("com_type check Failed, not support 16 bit system ");
-            return to_error(Errno::NoSuchDevice);
-        } else if com_type == DW_IC_COMP_TYPE_VALUE.to_be() {
-            log_error!("com_type check Failed, not support BE system ");
-            return to_error(Errno::NoSuchDevice);
+        // tLOW = 4.7 us and no offset
+        self.lhcnt.ss_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 4700, scl_fall_ns,0) as u16;
+        // tHigh = 4 us and no offset DW default
+        self.lhcnt.ss_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk,4000, sda_fall_ns,false,0) as u16;
+        log_info!("I2C dw Standard Mode HCNT:LCNT = {} : {}", self.lhcnt.ss_hcnt, self.lhcnt.ss_lcnt);
+        
+        let speed_mode = driver.speed_mode;
+        if speed_mode == I2cSpeedMode::FastPlusMode {
+            self.lhcnt.fs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 500, scl_fall_ns,0) as u16;
+            self.lhcnt.fs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk, 260, sda_fall_ns,false,0) as u16;
+            log_info!("I2C Fast Plus Mode HCNT:LCNT = {} : {}",
+                self.lhcnt.ss_hcnt, self.lhcnt.ss_lcnt);
         } else {
-            log_error!("com_type check failed, Unknown Synopsys component type: {:x}", com_type);
-            return to_error(Errno::NoSuchDevice);
+            self.lhcnt.fs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 1300, scl_fall_ns,0) as u16;
+            self.lhcnt.fs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk,600, sda_fall_ns,false,0) as u16;
+            log_info!("I2C Fast Mode HCNT:LCNT = {} : {}",
+                self.lhcnt.fs_hcnt, self.lhcnt.fs_lcnt);
         }
-        Ok(())
-    }
 
-    fn speed_check(&self) -> Result<()> {
-        let bus_freq_hz = self.ext_config.timing.get_bus_freq_hz();
-        if !I2C_DESIGNWARE_SUPPORT_SPEED.contains(&bus_freq_hz) {
-            log_error!("{bus_freq_hz} Hz is unsupported, only 100kHz, 400kHz, 1MHz and 3.4MHz are supported");
-            return to_error(Errno::InvalidArgs);
+        if speed_mode == I2cSpeedMode::HighSpeedMode {
+            self.lhcnt.hs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 320, scl_fall_ns,0) as u16;
+            self.lhcnt.hs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk,160, sda_fall_ns,false,0) as u16;
+            log_info!("I2C High Speed Mode HCNT:LCNT = {} : {}",
+                self.lhcnt.hs_hcnt, self.lhcnt.hs_lcnt);
         }
+                   
         Ok(())
     }
 }
