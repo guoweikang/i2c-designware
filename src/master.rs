@@ -54,6 +54,11 @@ impl I2cDwMasterDriver {
         Ok(())
     }
 
+    /// return  i2c functionality
+    pub fn get_functionality(&self) -> I2cFuncFlags {
+        self.driver.functionality
+    }
+
     /// Prepare controller for a transaction and call xfer_msg
     /*
     pub fn xfer(&mut self) {
@@ -64,11 +69,11 @@ impl I2cDwMasterDriver {
     fn xfer_init(&mut self) {
         self.driver.disable_controler();
     }
-*/
+   */
     /// functionality and cfg init
     fn config_init(&mut self) -> Result<()> {
         // init functionality
-        let functionality = I2cFuncFlags::TEN_BIT_ADDR | DW_I2C_DEFAULT_FUNCTIONALITY;
+        let functionality = I2cFuncFlags::TEN_BIT_ADDR;
         self.driver.functionality_init(functionality);
 
         // init master cfg

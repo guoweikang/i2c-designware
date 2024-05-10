@@ -8,11 +8,14 @@ license = "GPL-3.0-or-later OR Apache-2.0"
 homepage = ""
 repository = "https://github.com/guoweikang/i2c-designware.git"
 
+[features]
+linux=["osl/linux"]
+arceos=["osl/arceos"]
+default=["linux"]
+
 [dependencies]
 tock-registers = "0.8"
-#i2c_common = { git = "https://github.com/guoweikang/i2c-common.git"}
-i2c_common = { path = "../i2c-common/"}
 bitflags = "2.5.0"
-
-[target.'cfg(target_os = "arceos")'.dependencies]
-#Linux no need depend osl on cargo, it would be through `extern osl` import  
+# release use repo
+i2c_common = { path = "../i2c-common/"}
+osl = {path = "../../../../rust/osl"}
