@@ -1,14 +1,8 @@
-use osl::error::{Result};
-use tock_registers::interfaces::{Readable, Writeable};
 use i2c_common::*;
+use osl::error::Result;
+use tock_registers::interfaces::{Readable, Writeable};
 
-use crate::{
-    I2cDwCoreDriver,
-    I2cDwDriverConfig,
-    core::*,
-    common::DwI2cSclLHCnt,
-    registers::*,
-};
+use crate::{common::DwI2cSclLHCnt, registers::*, I2cDwCoreDriver, I2cDwDriverConfig};
 
 /// The I2cDesignware Driver
 #[allow(dead_code)]
@@ -42,14 +36,14 @@ impl I2cDwMasterDriver {
         self.driver.com_type_check()?;
         self.driver.speed_check()?;
 
-        // init config 
+        // init config
         self.config_init()?;
         self.scl_lhcnt_init()?;
         self.driver.sda_hold_time_init()?;
         self.fifo_size_init();
 
         // Initialize the designware I2C master hardware
-        self.master_setup()?;          
+        self.master_setup()?;
 
         Ok(())
     }
@@ -61,15 +55,15 @@ impl I2cDwMasterDriver {
 
     /// Prepare controller for a transaction and call xfer_msg
     /*
-    pub fn xfer(&mut self) {
+     pub fn xfer(&mut self) {
 
 
-    }
+     }
 
-    fn xfer_init(&mut self) {
-        self.driver.disable_controler();
-    }
-   */
+     fn xfer_init(&mut self) {
+         self.driver.disable_controler();
+     }
+    */
     /// functionality and cfg init
     fn config_init(&mut self) -> Result<()> {
         // init functionality
@@ -80,13 +74,20 @@ impl I2cDwMasterDriver {
         self.driver.cfg.modify(IC_CON::MASTER_MODE.val(1));
         self.driver.cfg.modify(IC_CON::IC_SLAVE_DISABLE.val(1));
         self.driver.cfg.modify(IC_CON::IC_RESTART_EN.val(1));
-        
+
         // On AMD platforms BIOS advertises the bus clear feature
         // and enables the SCL/SDA stuck low. SMU FW does the
         // bus recovery process. Driver should not ignore this BIOS
         // advertisement of bus clear feature.
-        if self.driver.regs.IC_CON.is_set(IC_CON::BUS_CLEAR_FEATURE_CTRL) {
-            self.driver.cfg.modify(IC_CON::BUS_CLEAR_FEATURE_CTRL.val(1));
+        if self
+            .driver
+            .regs
+            .IC_CON
+            .is_set(IC_CON::BUS_CLEAR_FEATURE_CTRL)
+        {
+            self.driver
+                .cfg
+                .modify(IC_CON::BUS_CLEAR_FEATURE_CTRL.val(1));
         }
 
         self.driver.cfg_init();
@@ -97,17 +98,35 @@ impl I2cDwMasterDriver {
         // Disable the adapter
         self.driver.disable_controler();
         // Write standard speed timing parameters
-        self.driver.regs.IC_SS_OR_UFM_SCL_LCNT.set(self.lhcnt.ss_lcnt.into());
-        self.driver.regs.IC_SS_OR_UFM_SCL_HCNT.set(self.lhcnt.ss_hcnt.into());
+        self.driver
+            .regs
+            .IC_SS_OR_UFM_SCL_LCNT
+            .set(self.lhcnt.ss_lcnt.into());
+        self.driver
+            .regs
+            .IC_SS_OR_UFM_SCL_HCNT
+            .set(self.lhcnt.ss_hcnt.into());
 
         // Write fast mode/fast mode plus timing parameters
-        self.driver.regs.IC_FS_SCL_LCNT.set(self.lhcnt.fs_lcnt.into());
-        self.driver.regs.IC_FS_SCL_HCNT_OR_UFM_TBUF_CNT.set(self.lhcnt.fs_hcnt.into());
+        self.driver
+            .regs
+            .IC_FS_SCL_LCNT
+            .set(self.lhcnt.fs_lcnt.into());
+        self.driver
+            .regs
+            .IC_FS_SCL_HCNT_OR_UFM_TBUF_CNT
+            .set(self.lhcnt.fs_hcnt.into());
 
         // Write high speed timing parameters if supported
         if self.driver.speed_mode == I2cSpeedMode::HighSpeedMode {
-            self.driver.regs.IC_HS_SCL_LCNT.set(self.lhcnt.hs_lcnt.into());
-            self.driver.regs.IC_HS_SCL_HCNT.set(self.lhcnt.hs_hcnt.into());
+            self.driver
+                .regs
+                .IC_HS_SCL_LCNT
+                .set(self.lhcnt.hs_lcnt.into());
+            self.driver
+                .regs
+                .IC_HS_SCL_HCNT
+                .set(self.lhcnt.hs_hcnt.into());
         }
 
         // Write SDA hold time if supported
@@ -115,7 +134,7 @@ impl I2cDwMasterDriver {
         // Write fifo
         self.driver.regs.IC_TX_TL.set(self.tx_fifo_depth / 2);
         self.driver.regs.IC_RX_TL.set(0);
-        
+
         // set IC_CON
         self.driver.write_cfg();
         Ok(())
@@ -125,7 +144,11 @@ impl I2cDwMasterDriver {
         let com_param_1 = self.driver.regs.IC_COMP_PARAM_1.extract();
         self.tx_fifo_depth = com_param_1.read(IC_COMP_PARAM_1::TX_BUFFER_DEPTH) + 1;
         self.rx_fifo_depth = com_param_1.read(IC_COMP_PARAM_1::RX_BUFFER_DEPTH) + 1;
-        log_info!("I2C fifo_depth RX:TX = {}: {}",  self.rx_fifo_depth, self.tx_fifo_depth);
+        log_info!(
+            "I2C fifo_depth RX:TX = {}: {}",
+            self.rx_fifo_depth,
+            self.tx_fifo_depth
+        );
     }
 
     fn scl_lhcnt_init(&mut self) -> Result<()> {
@@ -144,31 +167,44 @@ impl I2cDwMasterDriver {
         }
 
         // tLOW = 4.7 us and no offset
-        self.lhcnt.ss_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 4700, scl_fall_ns,0) as u16;
+        self.lhcnt.ss_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 4700, scl_fall_ns, 0) as u16;
         // tHigh = 4 us and no offset DW default
-        self.lhcnt.ss_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk,4000, sda_fall_ns,false,0) as u16;
-        log_info!("I2C dw Standard Mode HCNT:LCNT = {} : {}", self.lhcnt.ss_hcnt, self.lhcnt.ss_lcnt);
-        
+        self.lhcnt.ss_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk, 4000, sda_fall_ns, false, 0) as u16;
+        log_info!(
+            "I2C dw Standard Mode HCNT:LCNT = {} : {}",
+            self.lhcnt.ss_hcnt,
+            self.lhcnt.ss_lcnt
+        );
+
         let speed_mode = driver.speed_mode;
         if speed_mode == I2cSpeedMode::FastPlusMode {
-            self.lhcnt.fs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 500, scl_fall_ns,0) as u16;
-            self.lhcnt.fs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk, 260, sda_fall_ns,false,0) as u16;
-            log_info!("I2C Fast Plus Mode HCNT:LCNT = {} : {}",
-                self.lhcnt.ss_hcnt, self.lhcnt.ss_lcnt);
+            self.lhcnt.fs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 500, scl_fall_ns, 0) as u16;
+            self.lhcnt.fs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk, 260, sda_fall_ns, false, 0) as u16;
+            log_info!(
+                "I2C Fast Plus Mode HCNT:LCNT = {} : {}",
+                self.lhcnt.ss_hcnt,
+                self.lhcnt.ss_lcnt
+            );
         } else {
-            self.lhcnt.fs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 1300, scl_fall_ns,0) as u16;
-            self.lhcnt.fs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk,600, sda_fall_ns,false,0) as u16;
-            log_info!("I2C Fast Mode HCNT:LCNT = {} : {}",
-                self.lhcnt.fs_hcnt, self.lhcnt.fs_lcnt);
+            self.lhcnt.fs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 1300, scl_fall_ns, 0) as u16;
+            self.lhcnt.fs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk, 600, sda_fall_ns, false, 0) as u16;
+            log_info!(
+                "I2C Fast Mode HCNT:LCNT = {} : {}",
+                self.lhcnt.fs_hcnt,
+                self.lhcnt.fs_lcnt
+            );
         }
 
         if speed_mode == I2cSpeedMode::HighSpeedMode {
-            self.lhcnt.hs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 320, scl_fall_ns,0) as u16;
-            self.lhcnt.hs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk,160, sda_fall_ns,false,0) as u16;
-            log_info!("I2C High Speed Mode HCNT:LCNT = {} : {}",
-                self.lhcnt.hs_hcnt, self.lhcnt.hs_lcnt);
+            self.lhcnt.hs_lcnt = DwI2cSclLHCnt::scl_lcnt(ic_clk, 320, scl_fall_ns, 0) as u16;
+            self.lhcnt.hs_hcnt = DwI2cSclLHCnt::scl_hcnt(ic_clk, 160, sda_fall_ns, false, 0) as u16;
+            log_info!(
+                "I2C High Speed Mode HCNT:LCNT = {} : {}",
+                self.lhcnt.hs_hcnt,
+                self.lhcnt.hs_lcnt
+            );
         }
-                   
+
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 //! The official documentation: <https://www.synopsys.com/dw/ipdir.php?c=DW_apb_i2c>
 
-use core::ptr::NonNull;
 use core::ops::Deref;
+use core::ptr::NonNull;
 
 use tock_registers::register_bitfields;
 use tock_registers::registers::{ReadOnly, ReadWrite, WriteOnly};
@@ -325,11 +325,11 @@ register_bitfields![u32,
      ],
 ];
 
-/// Designware Component Type number = 0x44_57_01_40. This 
+/// Designware Component Type number = 0x44_57_01_40. This
 /// assigned unique hex value is constant and is derived from the two
 /// ASCII letters “DW” followed by a 16-bit unsigned number.
 
-pub(crate) const DW_IC_COMP_TYPE_VALUE:u32 = 0x44570140;
+pub(crate) const DW_IC_COMP_TYPE_VALUE: u32 = 0x44570140;
 
 /// "111" = v1.11
 pub(crate) const DW_IC_SDA_HOLD_MIN_VERS: u32 = 0x3131312A;
