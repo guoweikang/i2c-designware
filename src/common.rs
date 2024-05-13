@@ -81,11 +81,20 @@ impl DwI2cSclLHCnt {
 bitflags! {
     /// I2C DRIVER STATUS
     #[repr(transparent)]
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub(crate) struct DwI2cStatus: u32 {
          /// Support I2C
          const ACTIVE           = 0x01;
          const WriteInProgress  = 1<<1;
          const ReadInProgress   = 1<<2;
+    }
+}
+
+bitflags! {
+    /// I2C cmd err
+    #[repr(transparent)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub(crate) struct DwI2cCmdErr: u32 {
+        const TX_ABRT = 0x1;
     }
 }

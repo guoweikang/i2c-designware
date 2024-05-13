@@ -1,12 +1,23 @@
-use i2c_common::*;
-use osl::error::Result;
-use tock_registers::interfaces::{Readable, Writeable};
+use i2c_common::{
+    msg::{I2cMsg,I2cMsgFlags},
+    I2cFuncFlags,
+    I2cSpeedMode
+};
+use osl::{error::Result, vec::Vec};
+use tock_registers::LocalRegisterCopy;
 
-use crate::{common::DwI2cSclLHCnt, registers::*, I2cDwCoreDriver, I2cDwDriverConfig};
+use crate::{
+    common::{DwI2cSclLHCnt,DwI2cCmdErr}, 
+    registers::*, 
+    I2cDwCoreDriver, 
+    I2cDwDriverConfig
+};
 
 /// The I2cDesignware Driver
 #[allow(dead_code)]
-pub struct I2cDwMasterDriver {
+pub struct I2cDwMasterDriver<'a> {
+    /// I2c Config  register set value
+    cfg: LocalRegisterCopy<u32, IC_CON::Register>,
     /// core Driver
     driver: I2cDwCoreDriver,
     /// I2c scl_LHCNT
@@ -14,20 +25,101 @@ pub struct I2cDwMasterDriver {
     /// Fifo
     tx_fifo_depth: u32,
     rx_fifo_depth: u32,
+
+    /// XferData
+    msgs:Vec<I2cMsg<'a>>,
+    /// run time hadware error code
+    cmd_err: DwI2cCmdErr,
+    /// the element index of the current rx message in the msgs array
+    msg_read_idx: u32,
+    /// the buf index of the current msg[msg_read_idx] buf  
+    rx_buf_index: u32,
+    /// the element index of the current tx message in the msgs array
+    msg_write_idx: u32,
+    /// error status of the current transfer
+    msg_err: u32,
+    /// copy of the TX_ABRT_SOURCE register
+    abort_source: u32,
+    /// current master-rx elements in tx fifo
+    rx_outstanding: u32,
 }
 
-unsafe impl Sync for I2cDwMasterDriver {}
-unsafe impl Send for I2cDwMasterDriver {}
+unsafe impl Sync for I2cDwMasterDriver<'_> {}
+unsafe impl Send for I2cDwMasterDriver<'_> {}
 
-impl I2cDwMasterDriver {
+impl <'a> I2cDwMasterDriver<'a> {
+
     /// Create a new I2cDesignwarDriver
-    pub fn new(config: I2cDwDriverConfig, base_addr: *mut u8) -> I2cDwMasterDriver {
+    pub fn new(config: I2cDwDriverConfig, base_addr: *mut u8) -> I2cDwMasterDriver<'a> {
         Self {
+            cfg: LocalRegisterCopy::new(0),
             driver: I2cDwCoreDriver::new(config, base_addr),
             lhcnt: DwI2cSclLHCnt::default(),
             tx_fifo_depth: 0,
             rx_fifo_depth: 0,
+
+            msgs: Vec::new(),
+            cmd_err: DwI2cCmdErr::from_bits(0),
+            msg_read_idx: 0,
+            msg_write_idx: 0,
+            msg_err: 0,
+            abort_source: 0,
+            rx_outstanding: 0,
         }
+    }
+
+    fn reinit_xfer(&mut self, msgs: Vec<I2cMsg<'a>>) {
+        self.msgs =  msgs;
+        self.cmd_err = DwI2cCmdErr::from_bits(0);
+        self.msg_write_idx = 0;
+        self.msg_err = 0;
+        self.abort_source =  0;
+        self.rx_outstanding= 0;
+    }
+
+    fn is_enable_10bitaddr(&self) -> bool {
+        self.msgs[self.msg_write_idx as usize].flags().contains(I2cMsgFlags::I2cMasterTen)
+    }
+
+    /// Interrupt service routine. This gets called whenever an I2C master interrupt
+    /// occurs
+    pub fn irq_handler(&mut self) {
+        let enable = self.driver.ic_enable();
+        let stat = self.driver.ic_raw_intr_stat().get();
+        // check raw intr stat
+        if !enable.is_set(IC_ENABLE::ENABLE) &&
+            (stat & !0b100000000) == 0  {
+                return 0;
+        }
+
+        let stat = self.driver.read_and_clean_intrbits(&mut self.abort_source, self.rx_outstanding);
+
+        if !self.driver.is_active() {
+            /// Unexpected interrupt in driver point of view. State
+            /// variables are either unset or stale so acknowledge and
+            /// disable interrupts for suppressing further interrupts if
+            /// interrupt really came from this HW (E.g. firmware has left
+            /// the HW active).
+            self.driver.disable_all_interrupt();
+            return 0;
+        }
+
+        if stat.is_set(IC_INTR::TX_ABRT) {
+            self.xfer_data.cmd_err |= DwI2cCmdErr::TX_ABRT;
+            self.xfer_data.rx_outstanding = 0;
+            // Anytime TX_ABRT is set, the contents of the tx/rx
+            // buffers are flushed. Make sure to skip them.
+            self.driver.disable_all_interrupt();
+
+            // TOOD: finish complete
+            return 0;
+        }
+        
+        if stat.is_set(IC_INTR::RX_FULL) {
+            self.xfer_read_msgs();
+        }
+               
+
     }
 
     /// Initialize the designware I2C driver config
@@ -54,16 +146,69 @@ impl I2cDwMasterDriver {
     }
 
     /// Prepare controller for a transaction and call xfer_msg
-    /*
-     pub fn xfer(&mut self) {
+    pub fn master_xfer(&mut self, msgs: Vec<I2cMsg<'a>>) -> Result<()> {
+        self.reinit_xfer(msgs);
+        // wait bus free
+        self.driver.wait_bus_not_busy()?;
+        self.xfer_init();
+
+        // wait xfer complete
+        
+        Ok(())
+    }
+
+    fn xfer_init(&mut self) {
+        // deisable the adapter
+        self.driver.disable_controler();
+        let mut ic_tar: LocalRegisterCopy<u32, TAR::Register> =  LocalRegisterCopy::new(0);
+        // If the slave address is ten bit address, enable 10BITADDR
+        if self.is_enable_10bitaddr() {
+            self.driver.enable_10bitaddr(true);
+        } else {
+            ic_tar.modify(IC_TAR::IC_10BITADDR_MASTER.val(0b1));
+            self.driver.enable_10bitaddr(false);
+        }
+        
+        ic_tar.modify(IC_TAR::TAR.val(
+                self.msgs[self.msg_write_idx as usize].addr()
+            ));
+        self.driver.set_ic_tar(ic_tar.get());
+        
+        // Enforce disabled interrupts (due to HW issues)
+        self.dirver.disable_all_interrupt();
+
+        // Enable the adapter
+        self.dirver.enable_controler();
+
+        // Dummy read to avoid the register getting stuck on Bay Trail
+        let _ = self.driver.ic_enable_status();    
+        // Clear and enable interrupts
+        self.driver.clear_all_interrupt();
+        let mut mask = LocalRegisterCopy::new(0).modify(IC_INTR::RX_FULL.val(0b1));
+        mask.modify(IC_INTR::TX_ABRT.val(0b1));
+        mask.modify(IC_INTR::STOP_DET.val(0b1));
+        mask.modify(IC_INTR::TX_EMPTY.val(0b1));
+        self.driver.set_interrupt_mask(&mask);
+    }
+
+    fn xfer_read_msgs(&mut self) {
+        let msgs = &mut self.msgs[self.msg_read_idx];
+        for m in &mut msgs {
+            if !m.flags().contains(I2cMsgFlags::I2cMasterRead) {
+                self.msg_read_idx +=1;
+                continue
+            }
+
+            let mut rx_valid = self.driver.ic_rxflr().get();
+            
+            for i in 0..rx_valid {
+                let ic_data_cmd = self.driver.ic_data_cmd().read(IC_DATA_CMD::DATA);
+                
+            }
+        }
+    }
 
 
-     }
-
-     fn xfer_init(&mut self) {
-         self.driver.disable_controler();
-     }
-    */
     /// functionality and cfg init
     fn config_init(&mut self) -> Result<()> {
         // init functionality
@@ -71,77 +216,41 @@ impl I2cDwMasterDriver {
         self.driver.functionality_init(functionality);
 
         // init master cfg
-        self.driver.cfg.modify(IC_CON::MASTER_MODE.val(1));
-        self.driver.cfg.modify(IC_CON::IC_SLAVE_DISABLE.val(1));
-        self.driver.cfg.modify(IC_CON::IC_RESTART_EN.val(1));
+        self.cfg.modify(IC_CON::MASTER_MODE.val(1));
+        self.cfg.modify(IC_CON::IC_SLAVE_DISABLE.val(1));
+        self.cfg.modify(IC_CON::IC_RESTART_EN.val(1));
 
         // On AMD platforms BIOS advertises the bus clear feature
         // and enables the SCL/SDA stuck low. SMU FW does the
         // bus recovery process. Driver should not ignore this BIOS
         // advertisement of bus clear feature.
-        if self
-            .driver
-            .regs
-            .IC_CON
-            .is_set(IC_CON::BUS_CLEAR_FEATURE_CTRL)
+        if self.driver.ic_con().is_set(IC_CON::BUS_CLEAR_FEATURE_CTRL)
         {
-            self.driver
-                .cfg
-                .modify(IC_CON::BUS_CLEAR_FEATURE_CTRL.val(1));
+            self.cfg.modify(IC_CON::BUS_CLEAR_FEATURE_CTRL.val(1));
         }
 
-        self.driver.cfg_init();
+        self.driver.cfg_init_speed(&mut self.cfg);
         Ok(())
     }
 
     fn master_setup(&mut self) -> Result<()> {
         // Disable the adapter
         self.driver.disable_controler();
+
         // Write standard speed timing parameters
-        self.driver
-            .regs
-            .IC_SS_OR_UFM_SCL_LCNT
-            .set(self.lhcnt.ss_lcnt.into());
-        self.driver
-            .regs
-            .IC_SS_OR_UFM_SCL_HCNT
-            .set(self.lhcnt.ss_hcnt.into());
-
-        // Write fast mode/fast mode plus timing parameters
-        self.driver
-            .regs
-            .IC_FS_SCL_LCNT
-            .set(self.lhcnt.fs_lcnt.into());
-        self.driver
-            .regs
-            .IC_FS_SCL_HCNT_OR_UFM_TBUF_CNT
-            .set(self.lhcnt.fs_hcnt.into());
-
-        // Write high speed timing parameters if supported
-        if self.driver.speed_mode == I2cSpeedMode::HighSpeedMode {
-            self.driver
-                .regs
-                .IC_HS_SCL_LCNT
-                .set(self.lhcnt.hs_lcnt.into());
-            self.driver
-                .regs
-                .IC_HS_SCL_HCNT
-                .set(self.lhcnt.hs_hcnt.into());
-        }
-
+        self.driver.set_lhcnt(&self.lhcnt);
         // Write SDA hold time if supported
         self.driver.write_sda_hold_time();
         // Write fifo
-        self.driver.regs.IC_TX_TL.set(self.tx_fifo_depth / 2);
-        self.driver.regs.IC_RX_TL.set(0);
+        self.driver.set_fifo(self.tx_fifo_depth / 2, 0);
 
         // set IC_CON
-        self.driver.write_cfg();
+        self.driver.set_ic_con(&self.cfg);
         Ok(())
     }
 
     fn fifo_size_init(&mut self) {
-        let com_param_1 = self.driver.regs.IC_COMP_PARAM_1.extract();
+        let com_param_1 = self.driver.ic_comp_param_1();
         self.tx_fifo_depth = com_param_1.read(IC_COMP_PARAM_1::TX_BUFFER_DEPTH) + 1;
         self.rx_fifo_depth = com_param_1.read(IC_COMP_PARAM_1::RX_BUFFER_DEPTH) + 1;
         log_info!(

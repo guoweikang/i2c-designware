@@ -13,7 +13,7 @@ use i2c_common::*;
 use osl::error::{to_error, Errno, Result};
 use osl::sleep::usleep;
 use tock_registers::{
-    interfaces::{Readable, Writeable},
+    interfaces::{Readable, Writeable,ReadWriteable},
     LocalRegisterCopy,
 };
 
@@ -22,7 +22,11 @@ pub(crate) mod core;
 mod master;
 pub(crate) mod registers;
 
-use crate::{common::DwI2cStatus, core::*, registers::*};
+use crate::{
+    common::{DwI2cStatus,DwI2cSclLHCnt}, 
+    core::*, 
+    registers::*
+};
 
 /// I2cDwDriverConfig
 #[allow(dead_code)]
@@ -60,8 +64,6 @@ pub(crate) struct I2cDwCoreDriver {
 
     /// I2c functionality
     pub(crate) functionality: I2cFuncFlags,
-    /// I2c Config  register set value
-    pub(crate) cfg: LocalRegisterCopy<u32, IC_CON::Register>,
 
     /// I2c SpeedMode
     speed_mode: I2cSpeedMode,
@@ -91,11 +93,16 @@ impl I2cDwCoreDriver {
             bus_freq_hz: 0,
             sda_hold_time: None,
             functionality: DW_I2C_DEFAULT_FUNCTIONALITY,
-            cfg: LocalRegisterCopy::new(0),
             speed_mode: I2cSpeedMode::StandMode,
             mode: I2cMode::Master,
             status: DwI2cStatus::empty(),
         }
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub(crate) fn mode_init(&mut self, mode: I2cMode) {
+        self.mode = mode;
     }
 
     pub(crate) fn speed_check(&mut self) -> Result<()> {
@@ -141,26 +148,53 @@ impl I2cDwCoreDriver {
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn functionality_init(&mut self, functionality: I2cFuncFlags) {
         self.functionality |= functionality;
     }
 
-    pub(crate) fn cfg_init(&mut self) {
+    #[inline]
+    pub(crate) fn ic_rxflr(&mut self) -> LocalRegisterCopy<u32, IC_GENERAL_FLR::Register> {
+        self.regs.IC_RXFLR.extract()
+    }
+
+    #[inline]
+    pub(crate) fn ic_comp_param_1(&mut self) -> LocalRegisterCopy<u32, IC_COMP_PARAM_1::Register> {
+        self.regs.IC_COMP_PARAM_1.extract()
+    }
+
+    #[inline]
+    pub(crate) fn ic_con(&mut self) -> LocalRegisterCopy<u32, IC_CON::Register> {
+        self.regs.IC_CON.extract()
+    }
+
+    pub(crate) fn cfg_init_speed(&mut self, cfg: &mut LocalRegisterCopy<u32, IC_CON::Register>) {
         match self.speed_mode {
-            I2cSpeedMode::StandMode => self.cfg.modify(IC_CON::SPEED.val(0b01)),
-            I2cSpeedMode::HighSpeedMode => self.cfg.modify(IC_CON::SPEED.val(0b11)),
-            _ => self.cfg.modify(IC_CON::SPEED.val(0b10)),
+            I2cSpeedMode::StandMode => cfg.modify(IC_CON::SPEED.val(0b01)),
+            I2cSpeedMode::HighSpeedMode => cfg.modify(IC_CON::SPEED.val(0b11)),
+            _ => cfg.modify(IC_CON::SPEED.val(0b10)),
         }
     }
 
-    pub(crate) fn write_cfg(&mut self) {
-        self.regs.IC_CON.set(self.cfg.get());
+    #[inline]
+    pub(crate) fn set_ic_con(&mut self, cfg: &LocalRegisterCopy<u32, IC_CON::Register>) {
+        self.regs.IC_CON.set(cfg.get());
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn mode_init(&mut self, mode: I2cMode) {
-        self.mode = mode;
+    #[inline]
+    pub(crate) fn enable_10bitaddr(&mut self, enable: bool) {
+        if enable {
+            self.regs.IC_CON.modify(IC_CON::IC_10BITADDR_MASTER.val(0b1));
+        } else {
+            self.regs.IC_CON.modify(IC_CON::IC_10BITADDR_MASTER.val(0b0));
+        }
     }
+
+    #[inline]
+    pub(crate) fn set_ic_tar(&mut self, ic_tar: u32) {
+        self.regs.IC_TAR.set(tar);
+    }
+
 
     pub(crate) fn write_sda_hold_time(&mut self) {
         if self.sda_hold_time.is_some() {
@@ -207,15 +241,30 @@ impl I2cDwCoreDriver {
         Ok(())
     }
 
-    pub(crate) fn disable(&mut self) {
-        self.disable_controler();
-        // Disable all interrupts
-        self.regs.IC_INTR_MASK.set(0);
-        self.regs.IC_CLR_INTR.get();
+    pub(crate) fn set_lhcnt(&mut self, lhcnt: &DwI2cSclLHCnt) {
+        // Write standard speed timing parameters
+        self.regs.IC_SS_OR_UFM_SCL_LCNT.set(lhcnt.ss_lcnt.into());
+        self.regs.IC_SS_OR_UFM_SCL_HCNT.set(lhcnt.ss_hcnt.into());
+
+        // Write fast mode/fast mode plus timing parameters
+        self.regs.IC_FS_SCL_LCNT.set(lhcnt.fs_lcnt.into());
+        self.regs.IC_FS_SCL_HCNT_OR_UFM_TBUF_CNT.set(lhcnt.fs_hcnt.into());
+
+        // Write high speed timing parameters if supported
+        if self.speed_mode == I2cSpeedMode::HighSpeedMode {
+            self.regs.IC_HS_SCL_LCNT.set(lhcnt.hs_lcnt.into());
+            self.regs.IC_HS_SCL_HCNT.set(lhcnt.hs_hcnt.into());
+        }
     }
 
-    pub(crate) fn wait_bus_not_busy(&mut self) {
-        if let Err(e) = Self::read_poll_timeout(
+    #[inline]
+    pub(crate) fn set_fifo(&mut self, ic_tx: u32, ic_rx:u32) {
+        self.regs.IC_TX_TL.set(ic_tx);
+        self.regs.IC_RX_TL.set(ic_rx);
+    }
+
+    pub(crate) fn wait_bus_not_busy(&mut self) -> Result<()> {
+        if let Err(e) = read_poll_timeout(
             || return self.regs.IC_STATUS.extract(),
             move |x| !x.is_set(IC_STATUS::ACTIVITY),
             1100,
@@ -223,57 +272,126 @@ impl I2cDwCoreDriver {
             false,
         ) {
             log_err!("{:?} while waiting for bus ready", e);
+            return to_error(Errno::Busy);
         }
+        Ok(())
 
         //TODO: bus recovery
     }
 
-    /// Poll until a condition is met or a timeout occurs
-    fn read_poll_timeout<T, F: Fn() -> T, C: Fn(T) -> bool>(
-        read_op: F,
-        cond: C,
-        sleep_us: u64,
-        timeout_us: u64,
-        sleep_before: bool,
-    ) -> Result<()> {
-        let timeout: u64 = osl::time::time_add_us(timeout_us);
+    #[inline]
+    pub(crate) fn ic_enable(&mut self) -> LocalRegisterCopy<u32, IC_ENABLE::Register> {
+        self.regs.IC_ENABLE.extract()
+    }
 
-        if sleep_us != 0 && sleep_before {
-            osl::sleep::usleep(sleep_us);
+    #[inline]
+    pub(crate) fn ic_enable_status(&mut self) -> LocalRegisterCopy<u32, IC_ENABLE_STATUS::Register> {
+        self.regs.IC_ENABLE_STATUS.extract()
+    }
+
+    #[inline]
+    pub(crate) fn ic_raw_intr_stat(&mut self) -> LocalRegisterCopy<u32, IC_INTR::Register> {
+        self.regs.IC_RAW_INTR_STAT.extract()
+    }
+
+    pub(crate) fn read_and_clean_intrbits(&mut self, abort_source: &mut u32, rx_outstanding: u32) 
+        -> LocalRegisterCopy<u32, IC_INTR::Register> {
+        // The IC_INTR_STAT register just indicates "enabled" interrupts. 
+        // The unmasked raw version of interrupt status bits is available
+        // in the IC_RAW_INTR_STAT register.
+        //
+        // That is,
+        // stat = readl(IC_INTR_STAT);
+        // equals to,
+        // stat = readl(IC_RAW_INTR_STAT) & readl(IC_INTR_MASK);
+        // The raw version might be useful for debugging purposes.
+        let stat = self.regs.IC_INTR_STAT.extract();
+        
+        // Do not use the IC_CLR_INTR register to clear interrupts, or
+        // you'll miss some interrupts, triggered during the period from
+        // readl(IC_INTR_STAT) to readl(IC_CLR_INTR).
+        // Instead, use the separately-prepared IC_CLR_* registers.
+
+        if stat.is_set(IC_INTR::RX_UNDER) {
+            let _ = self.regs.IC_CLR_RX_UNDER.get();
         }
-
-        let ret = loop {
-            if cond(read_op()) {
-                return Ok(());
-            }
-
-            if timeout_us != 0 && osl::time::current_time() > timeout {
-                break read_op();
-            }
-
-            if sleep_us > 0 {
-                osl::sleep::usleep(sleep_us);
-            }
-        };
-
-        if cond(ret) {
-            return Ok(());
-        } else {
-            return to_error(Errno::TimeOut);
+        if stat.is_set(IC_INTR::RX_OVER) {
+            let _ = self.regs.IC_CLR_RX_OVER.get();
         }
+        if stat.is_set(IC_INTR::TX_OVER) {
+            let _ = self.regs.IC_CLR_TX_OVER.get();
+        }
+        if stat.is_set(IC_INTR::RD_REQ) {
+            let _ = self.regs.IC_CLR_RD_REQ.get();
+        }
+        if stat.is_set(IC_INTR::TX_ABRT) {
+            // The IC_TX_ABRT_SOURCE register is cleared whenever
+            // the IC_CLR_TX_ABRT is read.  Preserve it beforehand.
+            *abort_source = self.regs.IC_TX_ABRT_SOURCE.get();
+            let _ = self.regs.IC_CLR_TX_ABRT.get();
+        }
+        if stat.is_set(IC_INTR::RX_DONE) {
+            let _ = self.regs.IC_CLR_RX_DONE.get();
+        }
+        if stat.is_set(IC_INTR::ACTIVITY) {
+            let _ = self.regs.IC_CLR_ACTIVITY.get();
+        }
+        if stat.is_set(IC_INTR::STOP_DET) {
+            if rx_outstanding == 0 || stat.is_set(IC_INTR::RX_FULL)  {
+                let _ = self.regs.IC_CLR_STOP_DET.get();
+            }
+        }
+        if stat.is_set(IC_INTR::START_DET) {
+            let _ = self.regs.IC_CLR_START_DET.get();
+        }
+        if stat.is_set(IC_INTR::GEN_CALL) {
+            let _ = self.regs.IC_CLR_GEN_CALL.get();
+        }
+        stat
+    }
+
+    #[inline]
+    pub(crate) fn set_interrupt_mask(&mut self, mask: &LocalRegisterCopy<u32, IC_INTR::Register>) {
+        self.regs.IC_INTR_MASK.set(mask.get());
+    }
+
+    #[inline]
+    pub(crate) fn disable_all_interrupt(&mut self) {
+        self.regs.IC_INTR_MASK.set(0);
+    }
+
+    #[inline]
+    pub(crate) fn clear_all_interrupt(&mut self) {
+        self.regs.IC_CLR_INTR.get();
+    }
+
+    pub(crate) fn disable(&mut self) {
+        self.disable_controler();
+        // Disable all interrupts
+        self.disable_all_interrupt();
+        self.clear_all_interrupt();
+    }
+
+    pub(crate) fn enable_controler(&mut self) {
+        self.regs.IC_ENABLE.set(1);
+        self.status |= DwI2cStatus::ACTIVE;
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.status.contains(DwI2cStatus::ACTIVE)
     }
 
     pub(crate) fn disable_controler(&mut self) {
         let raw_int_stat = self.regs.IC_RAW_INTR_STAT.extract();
-        let mut ic_enable = self.regs.IC_ENABLE.extract();
+        let mut ic_enable = self.ic_enable();
 
         let need_aborted = raw_int_stat.is_set(IC_INTR::MST_ON_HOLD);
         if need_aborted {
             ic_enable.modify(IC_ENABLE::ABORT.val(1));
             self.regs.IC_ENABLE.set(ic_enable.get());
 
-            if let Err(e) = Self::read_poll_timeout(
-                || return self.regs.IC_ENABLE.extract(),
+            if let Err(e) = read_poll_timeout(
+                || return self.ic_enalbe(),
                 move |x| !x.is_set(IC_ENABLE::ABORT),
                 10,
                 100,
@@ -288,7 +406,7 @@ impl I2cDwCoreDriver {
             self.disable_nowait();
             usleep(100);
             // check enable_status
-            if !self.regs.IC_ENABLE_STATUS.is_set(IC_ENABLE_STATUS::IC_EN) {
+            if !self.ic_enable_status().is_set(IC_ENABLE_STATUS::IC_EN) {
                 log_info!("disable success");
                 break;
             }
@@ -303,5 +421,41 @@ impl I2cDwCoreDriver {
     fn disable_nowait(&mut self) {
         self.regs.IC_ENABLE.set(0);
         self.status &= !DwI2cStatus::ACTIVE;
+    }
+
+}
+
+/// Poll until a condition is met or a timeout occurs
+fn read_poll_timeout<T, F: Fn() -> T, C: Fn(T) -> bool>(
+    read_op: F,
+    cond: C,
+    sleep_us: u64,
+    timeout_us: u64,
+    sleep_before: bool,
+) -> Result<()> {
+    let timeout: u64 = osl::time::time_add_us(timeout_us);
+
+    if sleep_us != 0 && sleep_before {
+        osl::sleep::usleep(sleep_us);
+    }
+
+    let ret = loop {
+        if cond(read_op()) {
+            return Ok(());
+        }
+
+        if timeout_us != 0 && osl::time::current_time() > timeout {
+            break read_op();
+        }
+
+        if sleep_us > 0 {
+            osl::sleep::usleep(sleep_us);
+        }
+    };
+
+    if cond(ret) {
+        return Ok(());
+    } else {
+        return to_error(Errno::TimeOut);
     }
 }
