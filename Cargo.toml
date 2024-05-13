@@ -14,7 +14,7 @@ arceos=["osl/arceos"]
 default=["linux"]
 
 [dependencies]
-tock-registers = "0.8"
+tock-registers = "0.9"
 bitflags = "2.5.0"
 # release use repo
 i2c_common = { path = "../i2c-common/"}

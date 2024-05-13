@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use osl::math;
 
 #[allow(dead_code)]
 #[derive(Default, Debug, Copy, Clone)]
@@ -22,12 +23,6 @@ pub(crate) struct DwI2cSclLHCnt {
 }
 
 impl DwI2cSclLHCnt {
-    const MICRO: u64 = 1000000;
-
-    fn div_round_closest_ull(x: u64, divisor: u64) -> u32 {
-        ((x + divisor / 2) / divisor) as u32
-    }
-
     /// Conditional expression:
     ///  
     ///  IC_[FS]S_SCL_LCNT + 1 >= IC_CLK * (tLOW + tf)
@@ -46,7 +41,7 @@ impl DwI2cSclLHCnt {
             offset
         );
         let right: u64 = ic_clk as u64 * (tlow as u64 + tf as u64);
-        Self::div_round_closest_ull(right, Self::MICRO) - 1 + offset
+        (math::div_round_closest_ull(right, math::MICRO) - 1 + offset as u64).try_into().unwrap()
     }
 
     /// DesignWare I2C core doesn't seem to have solid strategy to meet
@@ -70,10 +65,10 @@ impl DwI2cSclLHCnt {
     pub(crate) fn scl_hcnt(ic_clk: u32, tsymbol: u32, tf: u32, cond: bool, offset: u32) -> u32 {
         if cond {
             let right: u64 = ic_clk as u64 * tsymbol as u64;
-            Self::div_round_closest_ull(right, Self::MICRO) - 8 + offset
+            (math::div_round_closest_ull(right, math::MICRO) - 8 + offset as u64).try_into().unwrap()
         } else {
             let right: u64 = ic_clk as u64 * (tsymbol as u64 + tf as u64);
-            Self::div_round_closest_ull(right, Self::MICRO) - 3 + offset
+            (math::div_round_closest_ull(right, math::MICRO) - 3 + offset as u64).try_into().unwrap()
         }
     }
 }
@@ -81,11 +76,20 @@ impl DwI2cSclLHCnt {
 bitflags! {
     /// I2C DRIVER STATUS
     #[repr(transparent)]
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub(crate) struct DwI2cStatus: u32 {
          /// Support I2C
-         const ACTIVE           = 0x01;
+         const ACTIVE           = 1<<0;
          const WriteInProgress  = 1<<1;
          const ReadInProgress   = 1<<2;
+    }
+}
+
+bitflags! {
+    /// I2C cmd err
+    #[repr(transparent)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub(crate) struct DwI2cCmdErr: u32 {
+        const TX_ABRT = 0x1;
     }
 }
