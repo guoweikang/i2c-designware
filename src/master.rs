@@ -1,16 +1,11 @@
-#[allow(unused_imports)]
-use i2c_common::{
-    msg::{I2cMsg, I2cMsgFlags},
-    I2cFuncFlags, I2cSpeedMode,
-};
 
-#[allow(unused_imports)]
 use osl::{
     error::{to_error, Errno, Result},
     vec::Vec,
     sync::{OslCompletion,GeneralComplete, SpinLock, new_spinlock, Arc},
-    irq,
-    irq::{to_irq_return, ReturnEnum},
+    driver::irq,
+    driver::irq::{to_irq_return, ReturnEnum},
+    driver::i2c::{I2cMsg, I2cMsgFlags, I2cFuncFlags, I2cSpeedMode, I2C_SMBUS_BLOCK_MAX, GeneralI2cMsg},
 };
 
 #[allow(unused_imports)]
@@ -275,7 +270,7 @@ impl MasterXfer {
             let mut rx_limit = master_driver.rx_fifo_depth - flr;
             
             loop {
-                if msg.read_end() || rx_limit <=0 || tx_limit <=0 {
+                if msg.send_end() || rx_limit <=0 || tx_limit <=0 {
                     break;
                 }
                 let mut cmd: LocalRegisterCopy<u32, IC_DATA_CMD::Register> = LocalRegisterCopy::new(0);
@@ -290,7 +285,7 @@ impl MasterXfer {
                 // Thus we can't stop the transaction here.
                 if write_idx == msg_len-1 &&
                     !msg.flags().contains(I2cMsgFlags::I2cMasterRecvLen) &&
-                    msg.read_left_last() {
+                    msg.send_left_last() {
                     cmd.modify(IC_DATA_CMD::STOP.val(0b1));
                 }
 
@@ -308,9 +303,9 @@ impl MasterXfer {
                     cmd.modify(IC_DATA_CMD::CMD.val(0b1));
                     rx_limit -= 1;
                     self.rx_outstanding += 1;
-                    msg.inc_read_cmd_cnt();
+                    msg.inc_recieve_cmd_cnt();
                 } else {
-                    cmd.modify(IC_DATA_CMD::DAT.val(msg.read_byte() as u32)); 
+                    cmd.modify(IC_DATA_CMD::DAT.val(msg.pop_front_byte() as u32)); 
                 }
                 core_driver.write_ic_data_cmd(&cmd);
                 tx_limit -=1;
@@ -325,7 +320,7 @@ impl MasterXfer {
                 self.set_write_in_progress(true);
                 intr_mask.modify(IC_INTR::TX_EMPTY.val(0b0));
                 break;
-            } else if !msg.read_end() {
+            } else if !msg.send_end() {
                 // wait next time TX_EMPTY interrupt
                 self.set_write_in_progress(true);
                 break;
@@ -368,7 +363,7 @@ impl MasterXfer {
             let rx_valid = core_driver.ic_rxflr().get();
             for _ in 0..rx_valid {
                 // check if buf can be write
-                if msg.write_end() {
+                if msg.recieve_end() {
                     break;
                 }
 
@@ -382,7 +377,7 @@ impl MasterXfer {
                     // I2C_FUNC_SMBUS_BLOCK_DATA case. That needs to read
                     // another byte with STOP bit set when the block data
                     // response length is invalid to complete the transaction.
-                    if ic_data == 0 || ic_data > i2c_common::I2C_SMBUS_BLOCK_MAX {
+                    if ic_data == 0 || ic_data > I2C_SMBUS_BLOCK_MAX {
                         ic_data = 1;
                     }
                     let mut buf_len = ic_data as usize;
@@ -393,20 +388,20 @@ impl MasterXfer {
                     } else {
                         buf_len+=1;
                     };
-                    msg.modify_buf_len(buf_len);
+                    msg.modify_recieve_threshold(buf_len);
                     // cacluate read_cmd_cnt
-                    msg.modify_read_cmd_cnt(self.rx_outstanding.min(buf_len as isize));
+                    msg.modify_recieve_cmd_cnt(self.rx_outstanding.min(buf_len as isize));
                     msg.remove_flag(I2cMsgFlags::I2cMasterRecvLen);
                     
                     // Received buffer length, re-enable TX_EMPTY interrupt
                     // to resume the SMBUS transaction.
                     core_driver.enable_tx_empty_intr(true);
                 }
-                msg.write_byte(ic_data.try_into().unwrap());
+                msg.push_byte(ic_data.try_into().unwrap());
                 self.rx_outstanding -= 1;
             }
             
-            if !msg.write_end() {
+            if !msg.recieve_end() {
                 // wait next time RX_FULL interrupt
                 return
             } else {

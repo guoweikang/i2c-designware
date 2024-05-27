@@ -1,5 +1,23 @@
 //! Driver for the  Synopsys DesignWare I2C
 //!
+//!
+//! # Examples
+//!
+//! use dw_apb_i2c::{I2cDwDriverConfig, I2cDwMasterDriver};
+//! use osl::driver::i2c::{I2cSpeedMode, I2cTiming};
+//!
+//! // Create and setup device driver
+//! let driver_config = I2cDwDriverConfig::new(timing, clk_rate_khz); 
+//! let mut i2c_master_driver = I2cDwMasterDriver::new(driver_config, reg_base); 
+//! i2c_master_driver.setup();
+//!
+//! // enable device irq hanlder on your OS with  driver
+//! os_regist_irq(irq_num, i2c_master_driver.irq_handler())
+//!
+//! // send or recive msgs with driver
+//! i2c_master_driver.master_transfer(trans_msgs)
+//!
+//!
 
 #![no_std]
 #![feature(const_option)]
@@ -9,11 +27,19 @@
 #[macro_use]
 extern crate osl;
 
-use i2c_common::*;
+
 use osl::{
     error::{to_error, Errno,Result},
     sleep::usleep,
     math,
+    driver::i2c::{
+        I2cFuncFlags,
+        I2cSpeedMode,
+        I2cTiming,
+        I2C_MAX_STANDARD_MODE_FREQ,
+        I2C_MAX_FAST_MODE_FREQ,
+        I2C_MAX_FAST_MODE_PLUS_FREQ,
+        I2C_MAX_HIGH_SPEED_MODE_FREQ},
 };
 
 use tock_registers::{
