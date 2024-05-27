@@ -11,7 +11,6 @@ repository = "https://github.com/guoweikang/i2c-designware.git"
 [features]
 linux=["osl/linux"]
 arceos=["osl/arceos"]
-default=["linux"]
 
 [dependencies]
 tock-registers = "0.9"
