@@ -1,4 +1,3 @@
-
 use osl::{
     error::{to_error, Errno, Result},
     vec::Vec,
@@ -70,7 +69,6 @@ impl Default for MasterXfer {
 }
 
 impl MasterXfer {
-
     #[allow(dead_code)]
     fn init(&mut self, msgs: Vec<I2cMsg>) {
         self.msgs = msgs;
@@ -438,8 +436,15 @@ pub struct I2cDwMasterDriver {
     /// Arc completion 
     cmd_complete: Arc<OslCompletion>,
 
-    /// xfer used on irq_handler, so protect by SpinLock
+    /// Since xfer will be used in interrupt handler,
+    /// the data needs a concurrent mechanism to ensure safety. 
+    /// The driver will ensure that it will not be triggered
+    /// by interrupts when using locks,
+    /// so there is no need to use spin_noirq
+    #[cfg(feature = "linux")]
     xfer: Arc<SpinLock<MasterXfer>>,
+    #[cfg(feature = "arceos")]
+    xfer: SpinLock<MasterXfer>,
 }
 
 impl I2cDwMasterDriver {
@@ -452,7 +457,10 @@ impl I2cDwMasterDriver {
             tx_fifo_depth: 0,
             rx_fifo_depth: 0,
             cmd_complete: OslCompletion::new().unwrap(),
+            #[cfg(feature = "linux")]
             xfer: Arc::pin_init(new_spinlock!(MasterXfer::default())).unwrap(),
+            #[cfg(feature = "arceos")]
+            xfer: new_spinlock!(MasterXfer::default()),
         }
     }
 

@@ -15,5 +15,4 @@ arceos=["osl/arceos"]
 [dependencies]
 tock-registers = "0.9"
 bitflags = "2.5.0"
-#osl = {path = "../../../../rust/osl"}
-osl = {git = "https://github.com/guoweikang/osl.git"}
+osl = {git = "https://github.com/guoweikang/osl.git", default-features = false}
